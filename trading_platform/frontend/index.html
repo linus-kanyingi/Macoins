@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="MACOINS — Multi-agent AI-powered stock trading platform.">
+  <title>MACOINS — Agentic Trading</title>
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Top Navigation ──────────────────────────────────────────── -->
+  <nav class="top-nav">
+    <div class="logo" onclick="navigateTo('landing')" id="nav-logo">
+      <div class="logo-icon">🤖</div>
+      <span class="logo-wordmark">MACOINS</span>
+    </div>
+
+    <div class="nav-links">
+      <button class="nav-btn" data-page="landing"   onclick="navigateTo('landing')"   id="nav-home">Home</button>
+      <button class="nav-btn" data-page="analysis"  onclick="navigateTo('analysis')"  id="nav-analysis">Analysis</button>
+      <button class="nav-btn" data-page="expert"    onclick="navigateTo('expert')"    id="nav-expert">Expert</button>
+      <button class="nav-btn" data-page="orders"    onclick="navigateTo('orders')"    id="nav-orders">Orders</button>
+    </div>
+
+    <div class="nav-right">
+      <div class="nav-status">
+        <div class="status-dot" id="ws-status" title="WebSocket connection"></div>
+        <span class="ws-label" id="ws-label">Connecting…</span>
+      </div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode" onclick="toggleTheme()">
+        <span id="theme-icon">☀️</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── Toast Container ─────────────────────────────────────────── -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- ── Pages ───────────────────────────────────────────────────── -->
+  <div class="main-content">
+
+    <!-- ══════════════════════════════════════════════════════════════
+         LANDING PAGE
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="page active" id="page-landing">
+      <div class="hero">
+        <!-- Ambient blobs -->
+        <div class="hero-blobs" aria-hidden="true">
+          <div class="hero-blob hero-blob-1"></div>
+          <div class="hero-blob hero-blob-2"></div>
+          <div class="hero-blob hero-blob-3"></div>
+        </div>
+
+        <div class="hero-content">
+          <div class="hero-eyebrow">
+            <span>✦</span>
+            <span>Paper Trading · AI-Powered · Multi-Agent</span>
+          </div>
+
+          <h1>Watch AI Agents<br>Trade the Market</h1>
+
+          <p class="subtitle">
+            Multi-agent AI researches, debates, and executes trading decisions in real time.
+            Choose how involved you want to be.
+          </p>
+
+          <div class="mode-cards">
+            <!-- Analysis Mode -->
+            <div class="mode-card analysis" onclick="navigateTo('analysis')" id="mode-analysis-card">
+              <div class="mode-icon-wrap">🔬</div>
+              <div class="mode-title">Analysis Mode</div>
+              <div class="mode-desc">
+                AI agents identify key factors, research in parallel, debate the findings,
+                and deliver a verdict with confidence scoring.
+              </div>
+              <ul class="mode-features">
+                <li>Dynamic factor identification per stock</li>
+                <li>Parallel research agents</li>
+                <li>Bull vs Bear debate</li>
+                <li>AI judge with confidence scoring</li>
+                <li>Don't know what to trade? We'll suggest</li>
+              </ul>
+              <div class="mode-card-arrow">→</div>
+            </div>
+
+            <!-- Expert Mode -->
+            <div class="mode-card expert" onclick="navigateTo('expert')" id="mode-expert-card">
+              <div class="mode-icon-wrap">⚡</div>
+              <div class="mode-title">Expert Mode</div>
+              <div class="mode-desc">
+                Set up autonomous agents with your own trading strategy.
+                Define rules, pick schedules, choose AI models.
+              </div>
+              <ul class="mode-features">
+                <li>Custom strategy instructions</li>
+                <li>Automated scheduling (cron)</li>
+                <li>Choose any LLM model per agent</li>
+                <li>Auto-execute or manual approval</li>
+                <li>Full decision logging</li>
+              </ul>
+              <div class="mode-card-arrow">→</div>
+            </div>
+
+            <!-- Orders -->
+            <div class="mode-card orders-card" onclick="navigateTo('orders')" id="mode-orders-card">
+              <div class="mode-icon-wrap">📋</div>
+              <div class="mode-title">Orders &amp; Portfolio</div>
+              <div class="mode-desc">
+                View all your orders in one place — manual trades, analysis-driven,
+                and expert agent executions.
+              </div>
+              <ul class="mode-features">
+                <li>Unified order history</li>
+                <li>Filter by source (Manual / Analysis / Expert)</li>
+                <li>Live account balance &amp; positions</li>
+                <li>Order status tracking</li>
+                <li>Cancel or manage open orders</li>
+              </ul>
+              <div class="mode-card-arrow">→</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ANALYSIS PAGE
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="page" id="page-analysis">
+      <div class="container">
+        <div class="section-header">
+          <h1 class="section-title">
+            <span style="font-size:1.2rem">🔬</span>
+            Analysis Mode
+          </h1>
+          <button class="btn btn-ghost btn-sm" onclick="showAnalysisHistory()" id="btn-analysis-history">History</button>
+        </div>
+
+        <!-- Step 0: Stock selection -->
+        <div id="analysis-setup" class="card" style="margin-bottom:24px">
+          <div style="margin-bottom:20px">
+            <div style="font-size:1rem;font-weight:600;margin-bottom:4px">Select a Stock to Analyze</div>
+            <div style="font-size:0.82rem;color:var(--text-muted)">Enter a ticker or let AI suggest high-potential stocks</div>
+          </div>
+
+          <div class="analysis-ticker-row">
+            <div class="ticker-input-wrap input-group" style="flex:1;min-width:200px">
+              <label for="analysis-ticker">Stock Ticker</label>
+              <div style="position:relative">
+                <span class="ticker-input-prefix">$</span>
+                <input class="input" id="analysis-ticker" placeholder="AAPL, NVDA, TSLA…" style="padding-left:28px;font-family:'JetBrains Mono',monospace;font-weight:600;font-size:1rem;text-transform:uppercase;letter-spacing:0.05em" />
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+              <button class="btn btn-primary" onclick="startAnalysis()" id="btn-start-analysis">
+                🚀 Run Analysis
+              </button>
+              <button class="btn btn-sell hidden" onclick="cancelAnalysis()" id="btn-cancel-analysis">
+                ⏹ Stop
+              </button>
+              <button class="btn btn-ghost" onclick="suggestStocks()" id="btn-suggest">
+                🎯 Suggest
+              </button>
+            </div>
+          </div>
+
+          <!-- LLM Config -->
+          <details style="margin-top:18px">
+            <summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;user-select:none">
+              ⚙ LLM Configuration
+            </summary>
+            <div class="llm-config">
+              <div class="input-group">
+                <label for="analysis-provider">Provider</label>
+                <select class="select" id="analysis-provider" onchange="onProviderChange('analysis')">
+                  <option value="ollama">Ollama (Local)</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="grok">Grok (xAI)</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label for="analysis-model">Model</label>
+                <select class="select" id="analysis-model"></select>
+              </div>
+            </div>
+          </details>
+
+          <!-- Suggestions -->
+          <div id="suggestions-area" class="hidden">
+            <div style="display:flex;align-items:center;gap:8px;margin:22px 0 14px">
+              <span style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted)">🎯 AI-Suggested Stocks</span>
+              <span style="font-size:0.78rem;color:var(--text-muted)">— click one to analyze</span>
+            </div>
+            <div class="suggestion-cards" id="suggestion-cards"></div>
+          </div>
+        </div>
+
+        <!-- Progress tracker -->
+        <div id="analysis-progress" class="hidden">
+          <div class="progress-steps" id="progress-steps">
+            <div class="progress-step" data-step="1" id="step-market"><span class="step-num">1</span> Market Data</div>
+            <div class="progress-step" data-step="2" id="step-factors"><span class="step-num">2</span> Factor ID</div>
+            <div class="progress-step" data-step="3" id="step-research"><span class="step-num">3</span> Research</div>
+            <div class="progress-step" data-step="4" id="step-debate"><span class="step-num">4</span> Debate</div>
+            <div class="progress-step" data-step="5" id="step-verdict"><span class="step-num">5</span> Verdict</div>
+          </div>
+
+          <div class="agent-activity" id="agent-status" style="margin-bottom:14px">
+            <div class="agent-spinner"></div>
+            <span id="agent-status-text">Initializing analysis…</span>
+          </div>
+
+          <div id="analysis-stream-box" class="analysis-stream-box hidden">
+            <div class="stream-header">
+              <span class="stream-agent-label" id="stream-agent-label">Agent</span>
+              <span class="stream-cursor">▍</span>
+            </div>
+            <div class="stream-content" id="analysis-stream-content"></div>
+          </div>
+        </div>
+
+        <!-- Factors -->
+        <div id="factors-section" class="hidden" style="margin-bottom:24px">
+          <div style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:12px">🔍 Key Factors Identified</div>
+          <div id="factors-list" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+        </div>
+
+        <!-- Research Reports -->
+        <div id="research-section" class="hidden" style="margin-bottom:24px">
+          <div style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:14px">📋 Research Reports</div>
+          <div id="research-reports" style="display:grid;gap:12px"></div>
+        </div>
+
+        <!-- Debate -->
+        <div id="debate-section" class="hidden" style="margin-bottom:24px">
+          <div style="font-size:0.82rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);margin-bottom:14px">⚔️ Agent Debate</div>
+          <div class="debate-panel">
+            <div class="debate-side bull" id="debate-bull-side">
+              <div class="debate-header">📈 BULL — Buy Case</div>
+              <div id="debate-bull-args"></div>
+            </div>
+            <div class="debate-side bear" id="debate-bear-side">
+              <div class="debate-header">📉 BEAR — Sell Case</div>
+              <div id="debate-bear-args"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Verdict -->
+        <div id="verdict-section" class="hidden" style="margin-bottom:24px">
+          <div class="verdict-panel" id="verdict-panel">
+            <div class="verdict-badge-wrap">
+              <div class="verdict-decision" id="verdict-decision">—</div>
+              <div class="verdict-confidence" id="verdict-confidence"></div>
+              <div class="verdict-reasoning" id="verdict-reasoning"></div>
+              <div class="verdict-scores">
+                <div class="score-item">
+                  <div class="score-value text-buy" id="verdict-bull-score">—</div>
+                  <div class="score-label">Bull Score</div>
+                </div>
+                <div class="score-item">
+                  <div class="score-value text-sell" id="verdict-bear-score">—</div>
+                  <div class="score-label">Bear Score</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trade Action Bar -->
+          <div id="trade-action-bar" class="trade-action-bar hidden">
+            <div class="trade-action-info">
+              <span id="trade-action-label">Act on this verdict:</span>
+            </div>
+            <div class="trade-action-controls">
+              <div class="input-group" style="min-width:100px">
+                <label for="trade-qty">Shares</label>
+                <input class="input" id="trade-qty" type="number" min="1" value="1" style="width:90px" />
+              </div>
+              <button class="btn btn-buy btn-lg" id="btn-execute-trade" onclick="executeFromVerdict()">
+                💰 Place Order
+              </button>
+            </div>
+            <div id="trade-action-note" class="trade-action-note"></div>
+          </div>
+        </div>
+
+        <!-- Analysis History -->
+        <div id="analysis-history-section" class="hidden" style="margin-bottom:24px">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Analysis History</span>
+              <button class="btn btn-ghost btn-sm" onclick="hideAnalysisHistory()">✕ Close</button>
+            </div>
+            <div id="analysis-history-list"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         EXPERT PAGE
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="page" id="page-expert">
+      <div class="container">
+        <div class="section-header">
+          <h1 class="section-title">
+            <span style="font-size:1.2rem">⚡</span>
+            Expert Mode
+          </h1>
+          <button class="btn btn-primary" onclick="showCreateAgentModal()" id="btn-create-agent">
+            + New Agent
+          </button>
+        </div>
+
+        <!-- Strategy Assistant Chat -->
+        <div class="strategy-chat-panel" id="strategy-chat-panel">
+          <div class="strategy-chat-header" onclick="toggleStrategyChat()" id="strategy-chat-toggle">
+            <div class="strategy-chat-title">
+              <div class="strategy-chat-icon">🧠</div>
+              <span>Strategy Assistant</span>
+              <span class="strategy-chat-badge">AI</span>
+            </div>
+            <div class="strategy-chat-header-right">
+              <span class="strategy-chat-hint" id="strategy-chat-hint">Click to chat with AI about strategy ideas</span>
+              <span class="strategy-chat-chevron" id="strategy-chat-chevron">▼</span>
+            </div>
+          </div>
+
+          <div class="strategy-chat-body hidden" id="strategy-chat-body">
+            <div class="chat-messages" id="strategy-chat-messages">
+              <div class="chat-welcome">
+                <div class="chat-welcome-icon">🤖</div>
+                <div class="chat-welcome-title">Strategy Assistant</div>
+                <div class="chat-welcome-text">
+                  Describe your trading idea and I'll help you build a complete agent strategy.<br>
+                  Try: <em>"I want to trade NVDA using momentum indicators"</em>
+                </div>
+              </div>
+            </div>
+
+            <div class="chat-input-bar">
+              <div class="chat-input-row">
+                <input class="input chat-input" id="strategy-chat-input"
+                  placeholder="Describe your trading strategy idea…"
+                  onkeypress="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendStrategyMessage(); }" />
+                <button class="btn btn-primary chat-send-btn" onclick="sendStrategyMessage()" id="btn-strategy-send">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+              <div class="chat-input-meta">
+                <div class="chat-llm-selector">
+                  <label for="strategy-provider" class="chat-llm-label">Model:</label>
+                  <select class="select chat-llm-select" id="strategy-provider" onchange="onProviderChange('strategy')">
+                    <option value="ollama">Ollama</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="grok">Grok</option>
+                  </select>
+                  <select class="select chat-llm-select" id="strategy-model"></select>
+                </div>
+                <button class="btn btn-ghost btn-sm chat-clear-btn" onclick="clearStrategyChat()" id="btn-strategy-clear" title="Clear conversation">
+                  🗑 Clear
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="expert-agents-list"></div>
+
+        <div id="expert-empty" class="empty-state">
+          <div class="empty-icon">🤖</div>
+          <p>No agents yet. Create your first autonomous trading agent with a custom strategy and schedule.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         ORDERS PAGE
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="page" id="page-orders">
+      <div class="container">
+        <div class="section-header">
+          <h1 class="section-title">
+            <span style="font-size:1.2rem">📋</span>
+            Orders &amp; Portfolio
+          </h1>
+          <button class="btn btn-ghost btn-sm" onclick="loadOrders()" id="btn-refresh-orders">
+            🔄 Refresh
+          </button>
+        </div>
+
+        <!-- Account Summary -->
+        <div class="account-summary" id="account-summary">
+          <div class="account-stat">
+            <div class="stat-label">Equity</div>
+            <div class="stat-value" id="acct-equity">—</div>
+          </div>
+          <div class="account-stat">
+            <div class="stat-label">Buying Power</div>
+            <div class="stat-value" id="acct-buying-power">—</div>
+          </div>
+          <div class="account-stat">
+            <div class="stat-label">Cash</div>
+            <div class="stat-value" id="acct-cash">—</div>
+          </div>
+          <div class="account-stat">
+            <div class="stat-label">Market Status</div>
+            <div class="stat-value" id="acct-market-status">—</div>
+          </div>
+        </div>
+
+        <!-- Positions -->
+        <div class="card" style="margin-bottom:24px" id="positions-card">
+          <div class="card-header">
+            <span class="card-title">📊 Current Positions</span>
+          </div>
+          <div id="positions-list">
+            <div class="empty-state" style="padding:20px"><p>Loading positions…</p></div>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="orders-filter-bar">
+          <button class="filter-btn active" data-source="all"      onclick="filterOrders('all')"      id="filter-all">All Orders</button>
+          <button class="filter-btn"         data-source="manual"   onclick="filterOrders('manual')"   id="filter-manual">Manual</button>
+          <button class="filter-btn"         data-source="analysis" onclick="filterOrders('analysis')" id="filter-analysis">Analysis</button>
+          <button class="filter-btn"         data-source="expert"   onclick="filterOrders('expert')"   id="filter-expert">Expert</button>
+        </div>
+
+        <!-- Orders Table -->
+        <div class="card" id="orders-card">
+          <div id="orders-table-container">
+            <div class="empty-state"><p>Loading orders…</p></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div><!-- /.main-content -->
+</div><!-- /#app -->
+
+<!-- ── Create Agent Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="create-agent-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Create Expert Agent</span>
+      <button class="modal-close" onclick="hideCreateAgentModal()">&times;</button>
+    </div>
+    <form id="create-agent-form" onsubmit="createAgent(event)">
+      <div style="display:grid;gap:18px">
+        <div class="input-group">
+          <label for="agent-name">Agent Name</label>
+          <input class="input" id="agent-name" placeholder="e.g. AAPL Momentum Bot" required />
+        </div>
+        <div class="input-group">
+          <label for="agent-ticker">Stock Ticker</label>
+          <input class="input" id="agent-ticker" placeholder="e.g. AAPL" required style="font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase" />
+        </div>
+        <div class="input-group">
+          <label for="agent-strategy">Strategy Instructions</label>
+          <textarea class="input" id="agent-strategy" rows="4"
+            placeholder="e.g. Buy when RSI drops below 30 and price is above 50-day SMA. Sell when RSI exceeds 70 or price drops below 200-day SMA. Always use stop-loss at 5%." required></textarea>
+        </div>
+        <div class="input-group">
+          <label for="agent-schedule">Schedule (Cron) — leave empty for manual only</label>
+          <input class="input" id="agent-schedule" placeholder="e.g. 0 9 * * 1-5  (9am weekdays)" style="font-family:'JetBrains Mono',monospace" />
+        </div>
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-secondary);cursor:pointer">
+            <input type="checkbox" id="agent-auto-execute" style="width:16px;height:16px;accent-color:var(--accent-blue)" />
+            Auto-execute trades without manual approval
+          </label>
+        </div>
+        <details>
+          <summary style="cursor:pointer;font-size:0.8rem;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;user-select:none">
+            ⚙ LLM Configuration
+          </summary>
+          <div class="llm-config">
+            <div class="input-group">
+              <label for="agent-provider">Provider</label>
+              <select class="select" id="agent-provider" onchange="onProviderChange('agent')">
+                <option value="ollama">Ollama (Local)</option>
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="gemini">Google Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="grok">Grok (xAI)</option>
+              </select>
+            </div>
+            <div class="input-group">
+              <label for="agent-model">Model</label>
+              <select class="select" id="agent-model"></select>
+            </div>
+          </div>
+        </details>
+        <button class="btn btn-primary btn-lg" type="submit" style="width:100%;justify-content:center">
+          🤖 Create Agent
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Agent Logs Modal ───────────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="agent-logs-modal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="logs-modal-title">Agent Logs</span>
+      <button class="modal-close" onclick="hideAgentLogsModal()">&times;</button>
+    </div>
+    <div id="agent-logs-content"></div>
+  </div>
+</div>
+
+<!-- ── Scripts ────────────────────────────────────────────────────── -->
+<script src="/js/hero-coins.js"></script>
+<script src="/js/ws-client.js"></script>
+<script src="/js/app.js"></script>
+<script>
+  // ── Theme toggle ────────────────────────────────────────────────
+  (function() {
+    const saved = localStorage.getItem('macoins-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+    updateThemeIcon(saved);
+  })();
+
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('macoins-theme', next);
+    updateThemeIcon(next);
+  }
+
+  function updateThemeIcon(theme) {
+    const el = document.getElementById('theme-icon');
+    if (el) el.textContent = theme === 'dark' ? '☀️' : '🌙';
+    const nav = document.querySelector('.top-nav');
+    if (nav) {
+      if (theme === 'light') {
+        nav.style.background = 'rgba(240,244,248,0.88)';
+      } else {
+        nav.style.background = '';
+      }
+    }
+  }
+
+  // Close modals on overlay click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', function(e) {
+      if (e.target === this) {
+        this.classList.add('hidden');
+      }
+    });
+  });
+
+  // Keyboard shortcut: Escape to close modal
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay:not(.hidden)').forEach(m => m.classList.add('hidden'));
+    }
+  });
+</script>
+</body>
+</html>
