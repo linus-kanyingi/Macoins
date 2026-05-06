@@ -202,22 +202,33 @@ body::before {
 }
 
 .logo-icon {
-  width: 36px;
+  width: auto;
   height: 36px;
-  background: var(--gradient-accent);
-  border-radius: var(--radius-md);
+  background: transparent;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1rem;
-  box-shadow: 0 2px 12px rgba(59,130,246,0.35);
-  transition: transform var(--transition-bounce), box-shadow var(--transition-base);
+  box-shadow: none;
+  transition: transform var(--transition-bounce);
 }
 
 .logo:hover .logo-icon {
   transform: rotate(-8deg) scale(1.08);
-  box-shadow: 0 4px 20px rgba(59,130,246,0.5);
 }
+
+.logo-img {
+  height: 36px;
+  width: auto;
+  display: none;
+  pointer-events: none;
+}
+
+.logo-img-dark  { display: block; }
+.logo-img-light { display: none; }
+
+[data-theme="light"] .logo-img-dark  { display: none; }
+[data-theme="light"] .logo-img-light { display: block; }
 
 .logo-wordmark {
   font-weight: 800;
