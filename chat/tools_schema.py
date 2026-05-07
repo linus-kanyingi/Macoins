@@ -96,3 +96,32 @@ TOOLS = [
         },
     },
 ]
+
+def get_anthropic_tools() -> list:
+    """Return tools in Anthropic's native format."""
+    return TOOLS
+
+def get_openai_tools() -> list:
+    """Convert Anthropic tool schema to OpenAI/Ollama native format."""
+    openai_tools = []
+    for tool in TOOLS:
+        openai_tools.append({
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            }
+        })
+    return openai_tools
+
+def get_gemini_tools() -> list:
+    """Convert Anthropic tool schema to Gemini native format."""
+    gemini_funcs = []
+    for tool in TOOLS:
+        gemini_funcs.append({
+            "name": tool["name"],
+            "description": tool["description"],
+            "parameters": tool["input_schema"],
+        })
+    return [{"function_declarations": gemini_funcs}]

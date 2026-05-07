@@ -15,8 +15,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
 
-from agents.llm_router import llm_call, LLMConfig, default_config
+from agents.llm_router import LLMConfig, default_config
 from core.events import manager
+from chat.universal_client import process_universal_chat
+from chat.context_builder import build_system_prompt
 
 router = APIRouter()
 
@@ -36,6 +38,7 @@ Your job is to help users design autonomous trading agent configurations through
 - Always suggest specific values (e.g. "RSI below 30" not just "low RSI")
 - When you have enough info to define the strategy, output a configuration block
 - Be proactive — make suggestions, don't just ask questions
+- You have access to tools. Use them to check live prices, portfolio balances, or run analysis if it helps the user design their strategy.
 
 ## Configuration Output
 When you've gathered enough information and the strategy is ready, include EXACTLY this JSON block in your response (the frontend will detect and parse it):
@@ -71,26 +74,28 @@ class StrategyChatRequest(BaseModel):
     history: List[ChatMessage] = []
     llm_provider: str = "ollama"
     llm_model: str = ""
+    llm_think: bool = True
 
 
 @router.post("/api/expert/strategy-chat")
 async def strategy_chat(req: StrategyChatRequest):
     """Process a strategy chat message and stream tokens via WebSocket."""
 
-    # Build the full prompt from history + new message
-    conversation_lines = []
+    messages = []
     for msg in req.history:
-        role_label = "User" if msg.role == "user" else "Assistant"
-        conversation_lines.append(f"{role_label}: {msg.content}")
-    conversation_lines.append(f"User: {req.message}")
+        messages.append({"role": msg.role, "content": msg.content})
+    
+    if len(messages) == 0:
+        messages.append({
+            "role": "user", 
+            "content": "The user just opened the strategy chat. Greet them and ask what kind of trading strategy they'd like to build.\n\nUser: " + req.message
+        })
+    else:
+        messages.append({"role": "user", "content": req.message})
 
-    full_prompt = "\n\n".join(conversation_lines)
-    if len(req.history) == 0:
-        full_prompt = (
-            "The user just opened the strategy chat. Greet them and ask what "
-            "kind of trading strategy they'd like to build.\n\n"
-            f"User: {req.message}"
-        )
+    # Combine dynamic Alpaca context with the strategy prompt
+    live_context = build_system_prompt()
+    combined_system = f"{live_context}\n\n---\n\n{STRATEGY_SYSTEM_PROMPT}"
 
     # Build LLM config
     config = LLMConfig(
@@ -99,6 +104,7 @@ async def strategy_chat(req: StrategyChatRequest):
         temperature=0.7,
         max_tokens=800,
         label="Strategy Assistant",
+        think=req.llm_think,
     )
 
     # Generate a stream ID so the frontend can correlate token events
@@ -120,15 +126,14 @@ async def strategy_chat(req: StrategyChatRequest):
     })
 
     try:
-        response = await loop.run_in_executor(
-            None,
-            lambda: llm_call(
-                full_prompt,
-                system=STRATEGY_SYSTEM_PROMPT,
-                config=config,
-                token_callback=on_token,
-            ),
+        chat_result = await process_universal_chat(
+            messages=messages,
+            system_prompt=combined_system,
+            llm_config=config,
+            token_callback=on_token,
+            loop=loop,
         )
+        response_text = chat_result.response
     except Exception as e:
         await manager.broadcast({
             "type": "strategy_chat_done",
@@ -136,13 +141,13 @@ async def strategy_chat(req: StrategyChatRequest):
             "error": str(e),
         })
         return {
-            "response": f"⚠️ LLM Error: {str(e)}",
+            "response": f"⚠️ Error: {str(e)}",
             "agent_config": None,
             "stream_id": stream_id,
         }
 
     # Try to extract agent_config from the response
-    agent_config = _extract_agent_config(response)
+    agent_config = _extract_agent_config(response_text)
 
     # Notify frontend that streaming is done
     await manager.broadcast({
@@ -152,7 +157,7 @@ async def strategy_chat(req: StrategyChatRequest):
     })
 
     return {
-        "response": response,
+        "response": response_text,
         "agent_config": agent_config,
         "stream_id": stream_id,
     }

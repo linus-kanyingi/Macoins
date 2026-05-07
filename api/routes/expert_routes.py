@@ -23,6 +23,7 @@ class CreateAgentRequest(BaseModel):
     llm_provider: str = "ollama"
     llm_model: str = ""
     llm_temperature: float = 0.7
+    llm_think: bool = True
 
 
 class UpdateAgentRequest(BaseModel):
@@ -34,6 +35,7 @@ class UpdateAgentRequest(BaseModel):
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
     llm_temperature: Optional[float] = None
+    llm_think: Optional[bool] = None
 
 
 @router.get("/api/expert/agents")
@@ -64,6 +66,7 @@ def create_agent(req: CreateAgentRequest, db: Session = Depends(get_session)):
         "provider": req.llm_provider,
         "model": req.llm_model,
         "temperature": req.llm_temperature,
+        "think": req.llm_think,
     }
 
     agent = ExpertAgent(
@@ -110,6 +113,8 @@ def update_agent(agent_id: int, req: UpdateAgentRequest,
         current_config["model"] = req.llm_model
     if req.llm_temperature is not None:
         current_config["temperature"] = req.llm_temperature
+    if req.llm_think is not None:
+        current_config["think"] = req.llm_think
     agent.llm_config = json.dumps(current_config)
 
     # Update schedule

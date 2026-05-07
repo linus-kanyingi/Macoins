@@ -32,11 +32,19 @@ class ConnectionManager:
         """Call from sync/thread context. Schedules broadcast on the event loop and
         discards the future — fire-and-forget for WebSocket push."""
         try:
-            future = asyncio.run_coroutine_threadsafe(self.broadcast(message), loop)
-            # Don't wait, but add a done-callback so any exception is swallowed cleanly
-            future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
+            current_loop = asyncio.get_running_loop()
         except RuntimeError:
-            pass  # loop not running (e.g. during shutdown)
+            current_loop = None
+
+        if current_loop is loop:
+            loop.create_task(self.broadcast(message))
+        else:
+            try:
+                future = asyncio.run_coroutine_threadsafe(self.broadcast(message), loop)
+                # Don't wait, but add a done-callback so any exception is swallowed cleanly
+                future.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
+            except RuntimeError:
+                pass  # loop not running (e.g. during shutdown)
 
 
 manager = ConnectionManager()

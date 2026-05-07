@@ -3,7 +3,10 @@ import os
 import sys
 import argparse
 
-# Ensure project root   cais on sys.path
+# Unset SSLKEYLOGFILE to prevent permission errors on Windows when python's ssl module initializes
+os.environ.pop("SSLKEYLOGFILE", None)
+
+# Ensure project root is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import uvicorn

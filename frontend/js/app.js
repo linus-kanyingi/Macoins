@@ -122,6 +122,7 @@ function getAnalysisLLMConfig() {
     return {
         llm_provider: document.getElementById('analysis-provider')?.value || 'ollama',
         llm_model: document.getElementById('analysis-model')?.value || '',
+        llm_think: document.getElementById('analysis-think')?.checked ?? true,
     };
 }
 
@@ -920,6 +921,7 @@ async function createAgent(event) {
         auto_execute: document.getElementById('agent-auto-execute').checked,
         llm_provider: document.getElementById('agent-provider').value,
         llm_model: document.getElementById('agent-model').value,
+        llm_think: document.getElementById('agent-think').checked,
     };
 
     try {
@@ -1067,6 +1069,7 @@ async function sendStrategyMessage() {
     try {
         const provider = document.getElementById('strategy-provider')?.value || 'ollama';
         const model = document.getElementById('strategy-model')?.value || '';
+        const think = document.getElementById('strategy-think')?.checked ?? true;
 
         // Fire-and-forget — tokens arrive via WebSocket
         const data = await api('/api/expert/strategy-chat', {
@@ -1076,6 +1079,7 @@ async function sendStrategyMessage() {
                 history: state.strategyChatHistory.slice(0, -1),
                 llm_provider: provider,
                 llm_model: model,
+                llm_think: think,
             }),
         });
 

@@ -30,6 +30,7 @@ class LLMConfig:
     temperature: float = 0.7
     max_tokens: int = 300
     label: str = ""                     # human-readable label, e.g. "Factor Identifier"
+    think: bool = True                  # whether to use <|think|> internal reasoning
 
     def __post_init__(self):
         if not self.model:
@@ -42,6 +43,7 @@ class LLMConfig:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "label": self.label,
+            "think": self.think,
         }
 
     @staticmethod
@@ -52,6 +54,7 @@ class LLMConfig:
             temperature=d.get("temperature", 0.7),
             max_tokens=d.get("max_tokens", 300),
             label=d.get("label", ""),
+            think=d.get("think", True),
         )
 
 
@@ -121,31 +124,45 @@ def _resolve_ollama_model(requested: str) -> str:
 
 def _ollama_chat(prompt: str, system: str, model: str,
                  temperature: float, max_tokens: int,
-                 token_callback: Optional[Callable] = None) -> str:
-    """Call Ollama /api/chat with streaming."""
+                 token_callback: Optional[Callable] = None,
+                 tools: list = None, think: bool = True, messages: list = None) -> dict | str:
+    """Call Ollama /api/chat. Always streams for real-time token display."""
     model = _resolve_ollama_model(model)
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
+    
+    if not messages:
+        messages = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
+    elif system:
+        # Ensure system prompt is present even when messages are pre-built
+        if not any(m.get("role") == "system" for m in messages):
+            messages.insert(0, {"role": "system", "content": system})
 
     # Thinking models (gemma4, qwen3, etc.) consume tokens on internal reasoning.
     # Give them extra budget so they don't exhaust num_predict before producing output.
     predict_budget = max_tokens + 1500
 
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": True,
+        "think": think,
+        "options": {
+            "temperature": temperature,
+            "num_predict": predict_budget,
+            "num_ctx": NUM_CTX,
+        },
+    }
+    print(f"[Ollama] think={think}, tools={bool(tools)}, messages={len(messages)}")
+    if tools:
+        payload["tools"] = tools
+
     with _ollama_lock:
         resp = requests.post(
             f"{settings.OLLAMA_BASE_URL}/api/chat",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": True,
-                "options": {
-                    "temperature": temperature,
-                    "num_predict": predict_budget,
-                    "num_ctx": NUM_CTX,
-                },
-            },
+            json=payload,
             timeout=OLLAMA_TIMEOUT,
             stream=True,
         )
@@ -155,14 +172,17 @@ def _ollama_chat(prompt: str, system: str, model: str,
             except Exception:
                 err_body = f"HTTP {resp.status_code}"
             raise RuntimeError(f"Ollama error ({resp.status_code}): {err_body}")
-        return _collect_ollama_stream(resp, token_callback)
+            
+        return _collect_ollama_stream(resp, token_callback, has_tools=bool(tools))
 
 
-def _collect_ollama_stream(resp, token_callback) -> str:
+def _collect_ollama_stream(resp, token_callback, has_tools: bool = False) -> str | dict:
     """Collect streamed Ollama response. Keeps thinking content as fallback."""
     visible_chunks = []
     think_chunks = []
     in_think = False
+    tool_calls = []
+    raw_chunks = []   # Debug: track all raw content
 
     for raw_line in resp.iter_lines():
         if not raw_line:
@@ -172,15 +192,35 @@ def _collect_ollama_stream(resp, token_callback) -> str:
         except json.JSONDecodeError:
             continue
         msg = obj.get("message", {})
+        
+        # Capture tool calls from stream
+        if has_tools and "tool_calls" in msg:
+            for tc in msg["tool_calls"]:
+                tool_calls.append({
+                    "id": tc.get("id"),
+                    "name": tc["function"]["name"],
+                    "arguments": tc["function"]["arguments"]
+                })
+
         token = msg.get("content", "")
+        thinking_text = msg.get("thinking", "")
+
+        # Capture thinking tokens (Ollama puts them in a separate 'thinking' field)
+        if thinking_text:
+            think_chunks.append(thinking_text)
+
         if not token:
             continue
 
-        # Separate thinking tokens from visible tokens
-        is_thinking = msg.get("thinking", False)
-        if is_thinking:
-            think_chunks.append(token)
-            continue
+        raw_chunks.append(token)
+
+        # If the Ollama API explicitly marks this chunk as thinking, capture and skip
+        if thinking_text:
+            # Content arrived alongside a thinking chunk — treat content as visible
+            pass
+        elif msg.get("thinking") is not None:
+            # Edge case: thinking field exists but empty while content has text
+            pass
 
         # Filter inline <think>...</think> tags from visible output
         token, in_think = _filter_think(token, in_think)
@@ -197,7 +237,7 @@ def _collect_ollama_stream(resp, token_callback) -> str:
     visible = _strip_think("".join(visible_chunks).strip())
 
     if visible:
-        return visible
+        return {"content": visible, "tool_calls": tool_calls} if has_tools else visible
 
     # Fallback: if visible output is empty but thinking produced content,
     # extract useful text from the thinking (the model "thought" but didn't
@@ -205,10 +245,22 @@ def _collect_ollama_stream(resp, token_callback) -> str:
     if think_chunks:
         think_text = "".join(think_chunks).strip()
         print(f"[LLM] No visible output — extracting from {len(think_text)} chars of thinking")
-        return think_text[:max(2000, len(think_text))]
+        fallback_text = think_text[:max(2000, len(think_text))]
+        return {"content": fallback_text, "tool_calls": tool_calls} if has_tools else fallback_text
+
+    # Last resort: if _filter_think stripped inline <think> tags, use raw content
+    if raw_chunks:
+        raw_text = _strip_think("".join(raw_chunks).strip())
+        if raw_text:
+            print(f"[LLM] Recovered {len(raw_text)} chars after stripping inline think tags")
+            if token_callback:
+                token_callback(raw_text)
+            return {"content": raw_text, "tool_calls": tool_calls} if has_tools else raw_text
+        else:
+            print(f"[LLM] WARNING: Model produced {len(''.join(raw_chunks))} chars but all were <think> content")
 
     print("[LLM] WARNING: Model returned completely empty response")
-    return ""
+    return {"content": "", "tool_calls": tool_calls} if has_tools else ""
 
 
 def _filter_think(token: str, in_think: bool):
@@ -240,51 +292,104 @@ def _strip_think(text: str) -> str:
 
 # ── Cloud provider calls ──────────────────────────────────────────────────────
 
-def _openai_chat(prompt: str, system: str, model: str,
+def _openai_chat(messages: list, model: str,
                  temperature: float, max_tokens: int,
-                 api_key: str, base_url: str = "https://api.openai.com/v1") -> str:
+                 api_key: str, base_url: str = "https://api.openai.com/v1", tools: list = None) -> dict:
     from openai import OpenAI
     client = OpenAI(api_key=api_key, base_url=base_url)
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-    response = client.chat.completions.create(
-        model=model, messages=messages,
-        max_tokens=max_tokens, temperature=temperature,
-    )
-    return response.choices[0].message.content or ""
+    kwargs = {
+        "model": model, "messages": messages,
+        "max_tokens": max_tokens, "temperature": temperature,
+    }
+    if tools:
+        kwargs["tools"] = tools
+        
+    response = client.chat.completions.create(**kwargs)
+    msg = response.choices[0].message
+    
+    tool_calls = []
+    if getattr(msg, "tool_calls", None):
+        for tc in msg.tool_calls:
+            tool_calls.append({
+                "id": tc.id,
+                "name": tc.function.name,
+                "arguments": json.loads(tc.function.arguments)
+            })
+            
+    return {"content": msg.content or "", "tool_calls": tool_calls}
 
 
-def _anthropic_chat(prompt: str, system: str, model: str,
-                    temperature: float, max_tokens: int) -> str:
+def _anthropic_chat(messages: list, system: str, model: str,
+                    temperature: float, max_tokens: int, tools: list = None) -> dict:
     import anthropic
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    response = client.messages.create(
-        model=model, max_tokens=max_tokens,
-        system=system or "You are a helpful assistant.",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.content[0].text if response.content else ""
+    kwargs = {
+        "model": model, "max_tokens": max_tokens, "temperature": temperature,
+        "messages": messages, "system": system or "You are a helpful assistant."
+    }
+    if tools:
+        kwargs["tools"] = tools
+        
+    response = client.messages.create(**kwargs)
+    
+    content = ""
+    tool_calls = []
+    for block in response.content:
+        if block.type == "text":
+            content += block.text
+        elif block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "arguments": block.input
+            })
+            
+    return {"content": content, "tool_calls": tool_calls}
 
 
-def _gemini_chat(prompt: str, system: str, model: str,
-                 temperature: float, max_tokens: int) -> str:
+def _gemini_chat(messages: list, system: str, model: str,
+                 temperature: float, max_tokens: int, tools: list = None) -> dict:
     import google.generativeai as genai
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    gm = genai.GenerativeModel(model, system_instruction=system or None)
-    response = gm.generate_content(prompt)
-    return response.text or ""
+    kwargs = {"model_name": model, "system_instruction": system or None}
+    if tools:
+        kwargs["tools"] = tools
+        
+    gm = genai.GenerativeModel(**kwargs)
+    
+    # Gemini requires a specific message format (user/model roles, parts)
+    # We map common {"role": "...", "content": "..."} to Gemini format
+    gemini_history = []
+    for m in messages:
+        role = "user" if m["role"] == "user" else "model"
+        if isinstance(m["content"], str):
+            gemini_history.append({"role": role, "parts": [{"text": m["content"]}]})
+            
+    chat = gm.start_chat(history=gemini_history[:-1])
+    response = chat.send_message(gemini_history[-1]["parts"])
+    
+    content = ""
+    tool_calls = []
+    if response.parts:
+        for part in response.parts:
+            if getattr(part, "text", None):
+                content += part.text
+            elif getattr(part, "function_call", None):
+                fc = part.function_call
+                args = {k: v for k, v in fc.args.items()}
+                tool_calls.append({"name": fc.name, "arguments": args})
+                
+    return {"content": content, "tool_calls": tool_calls}
 
 
 # ── Main dispatch ──────────────────────────────────────────────────────────────
 
-def llm_call(prompt: str, system: str = "",
-             config: Optional[LLMConfig] = None,
-             token_callback: Optional[Callable] = None) -> str:
+def llm_call(prompt: str = "", system: str = "", messages: list = None,
+             config: Optional[LLMConfig] = None, tools: list = None,
+             token_callback: Optional[Callable] = None) -> dict:
     """
-    Unified LLM call.  Pass an LLMConfig to override provider/model,
-    or leave None for system default (local Ollama).
+    Unified LLM call. Pass an LLMConfig to override provider/model.
+    Returns: {"content": "...", "tool_calls": [...]}
     """
     if config is None:
         config = default_config()
@@ -292,58 +397,80 @@ def llm_call(prompt: str, system: str = "",
     provider = config.provider.lower()
     label = f" [{config.label}]" if config.label else ""
     print(f"[LLM{label}] → {provider}/{config.model} (max_tokens={config.max_tokens})")
+    
+    if messages is None:
+        messages = []
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
+    
+    # Extract system prompt if embedded in messages
+    sys_prompt = system
+    filtered_messages = []
+    for m in messages:
+        if m["role"] == "system":
+            sys_prompt = m["content"]
+        else:
+            filtered_messages.append(m)
+    messages = filtered_messages
 
     try:
         if provider == "ollama":
-            return _ollama_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
+            content = _ollama_chat(
+                prompt=prompt, 
+                system=sys_prompt, model=config.model,
+                temperature=config.temperature, max_tokens=config.max_tokens,
                 token_callback=token_callback,
+                tools=tools, think=config.think, messages=messages
             )
+            # _ollama_chat now returns dict if tools are enabled
+            if isinstance(content, dict):
+                return content
+            return {"content": content, "tool_calls": []}
 
         elif provider == "openai":
             if not settings.OPENAI_API_KEY:
                 raise RuntimeError("OPENAI_API_KEY not set in .env")
+            if sys_prompt:
+                messages.insert(0, {"role": "system", "content": sys_prompt})
             return _openai_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
-                api_key=settings.OPENAI_API_KEY,
+                messages, config.model, config.temperature, config.max_tokens,
+                api_key=settings.OPENAI_API_KEY, tools=tools
             )
 
         elif provider == "anthropic":
             if not settings.ANTHROPIC_API_KEY:
                 raise RuntimeError("ANTHROPIC_API_KEY not set in .env")
             return _anthropic_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
+                messages, sys_prompt, config.model,
+                config.temperature, config.max_tokens, tools=tools
             )
 
         elif provider == "gemini":
             if not settings.GEMINI_API_KEY:
                 raise RuntimeError("GEMINI_API_KEY not set in .env")
             return _gemini_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
+                messages, sys_prompt, config.model,
+                config.temperature, config.max_tokens, tools=tools
             )
 
         elif provider == "deepseek":
             if not settings.DEEPSEEK_API_KEY:
                 raise RuntimeError("DEEPSEEK_API_KEY not set in .env")
+            if sys_prompt:
+                messages.insert(0, {"role": "system", "content": sys_prompt})
             return _openai_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url="https://api.deepseek.com/v1",
+                messages, config.model, config.temperature, config.max_tokens,
+                api_key=settings.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com/v1", tools=tools
             )
 
         elif provider == "grok":
             if not settings.GROK_API_KEY:
                 raise RuntimeError("GROK_API_KEY not set in .env")
+            if sys_prompt:
+                messages.insert(0, {"role": "system", "content": sys_prompt})
             return _openai_chat(
-                prompt, system, config.model,
-                config.temperature, config.max_tokens,
-                api_key=settings.GROK_API_KEY,
-                base_url="https://api.x.ai/v1",
+                messages, config.model, config.temperature, config.max_tokens,
+                api_key=settings.GROK_API_KEY, base_url="https://api.x.ai/v1", tools=tools
             )
 
         else:

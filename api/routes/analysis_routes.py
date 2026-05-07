@@ -20,11 +20,13 @@ class AnalysisRequest(BaseModel):
     auto_execute: bool = False
     llm_provider: str = "ollama"
     llm_model: str = ""
+    llm_think: bool = True
 
 
 class StockSuggestRequest(BaseModel):
     llm_provider: str = "ollama"
     llm_model: str = ""
+    llm_think: bool = True
 
 
 @router.post("/api/analysis/suggest-stocks")
@@ -36,6 +38,7 @@ async def suggest_stocks_route(req: StockSuggestRequest):
         model=req.llm_model or "",
         label="Stock Picker",
         max_tokens=300,
+        think=req.llm_think,
     )
 
     try:
@@ -61,6 +64,7 @@ async def start_analysis(req: AnalysisRequest, background_tasks: BackgroundTasks
         provider=req.llm_provider,
         model=req.llm_model or "",
         max_tokens=300,
+        think=req.llm_think,
     )
 
     background_tasks.add_task(

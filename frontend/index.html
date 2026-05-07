@@ -188,7 +188,12 @@
               </div>
               <div class="input-group">
                 <label for="analysis-model">Model</label>
-                <select class="select" id="analysis-model"></select>
+                <div style="display:flex;gap:12px;align-items:center">
+                  <select class="select" id="analysis-model" style="flex:1"></select>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer" title="Enable internal reasoning (for models like gemma4:e2b)">
+                    <input type="checkbox" id="analysis-think" checked style="accent-color:var(--accent-blue)"/> Think
+                  </label>
+                </div>
               </div>
             </div>
           </details>
@@ -368,6 +373,9 @@
                     <option value="grok">Grok</option>
                   </select>
                   <select class="select chat-llm-select" id="strategy-model"></select>
+                  <label style="display:flex;align-items:center;gap:4px;font-size:0.8rem;cursor:pointer;margin-left:8px;color:var(--text-secondary)" title="Enable internal reasoning">
+                    <input type="checkbox" id="strategy-think" checked style="accent-color:var(--accent-blue)"/> Think
+                  </label>
                 </div>
                 <button class="btn btn-ghost btn-sm chat-clear-btn" onclick="clearStrategyChat()" id="btn-strategy-clear" title="Clear conversation">
                   🗑 Clear
@@ -502,7 +510,12 @@
             </div>
             <div class="input-group">
               <label for="agent-model">Model</label>
-              <select class="select" id="agent-model"></select>
+              <div style="display:flex;gap:12px;align-items:center">
+                <select class="select" id="agent-model" style="flex:1"></select>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.85rem;cursor:pointer" title="Enable internal reasoning">
+                  <input type="checkbox" id="agent-think" checked style="accent-color:var(--accent-blue)"/> Think
+                </label>
+              </div>
             </div>
           </div>
         </details>
@@ -526,9 +539,9 @@
 </div>
 
 <!-- ── Scripts ────────────────────────────────────────────────────── -->
-<script src="/js/hero-coins.js"></script>
-<script src="/js/ws-client.js"></script>
-<script src="/js/app.js"></script>
+<script src="/js/hero-coins.js?v=2"></script>
+<script src="/js/ws-client.js?v=2"></script>
+<script src="/js/app.js?v=2"></script>
 <script>
   // ── Theme toggle ────────────────────────────────────────────────
   (function() {

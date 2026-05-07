@@ -5,7 +5,9 @@ import json
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from chat.claude_client import process_command
+from agents.llm_router import LLMConfig
+from chat.universal_client import process_universal_chat
+from chat.context_builder import build_system_prompt
 from core.database import get_session
 from core.models import ChatMessage
 
@@ -25,8 +27,21 @@ async def chat(request: ChatRequest, db: Session = Depends(get_session)):
     db.add(ChatMessage(session_id=request.session_id, role="user", content=request.message))
     db.commit()
 
+    # Build context
+    system_prompt = build_system_prompt()
+    config = LLMConfig() # default to ollama or whatever is configured
+
+    # Get history
+    history = db.query(ChatMessage).filter(ChatMessage.session_id == request.session_id).order_by(ChatMessage.timestamp.asc()).all()
+    messages = [{"role": msg.role, "content": msg.content} for msg in history]
+
     # Process
-    result = await process_command(request.message, loop=loop)
+    result = await process_universal_chat(
+        messages=messages,
+        system_prompt=system_prompt,
+        llm_config=config,
+        loop=loop
+    )
 
     # Save assistant response
     db.add(ChatMessage(
